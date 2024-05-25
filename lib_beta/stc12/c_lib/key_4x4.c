@@ -1,6 +1,6 @@
 /*
     This file is part of the c51_lib, see <https://github.com/supine0703/c51_lib>.
-
+    
     Copyright (C) <2024>  <李宗霖>  <email: supine0703@outlook.com>
 
     This program is free software: you can redistribute it and/or modify
@@ -19,22 +19,50 @@
 
 #include "__config__.h"
 
-#ifndef UNUSED_STEPPING_MOTOR
+#ifndef UNUSED_KEY_4X4
 
 /* ========================================================================== */
 
-unsigned char SteppingMotor_Index = 0;
-unsigned char code SteppingMotor_Turns[] = {
-    0x02, /* 0010 */
-    0x06, /* 0110 */
-    0x04, /* 0100 */
-    0x0c, /* 1100 */
-    0x08, /* 1000 */
-    0x09, /* 1001 */
-    0x01, /* 0001 */
-    0x03, /* 0011 */
-};
+#define PIN KEY_4X4_PIN
+
+u8 SwitchValue(u8 v)
+{
+    switch (v)
+    {
+    case 0x07:
+    case 0x70:
+        return 0x00;
+    case 0x0b:
+    case 0xb0:
+        return 0x01;
+    case 0x0d:
+    case 0xd0:
+        return 0x02;
+    case 0x0e:
+    case 0xe0:
+        return 0x03;
+    default:
+        return 0xff;
+    }
+}
+
+u8 KEY_4X4_Value(void)
+{
+    u8 n;
+    PIN = 0x0f; // 列检测
+    if (PIN != 0x0f)
+    {
+        n = PIN;
+        KEY_4X4_DELAY; // 按键消抖
+        if (n == PIN)
+        {
+            PIN = 0xf0; // 行检测
+            return ((SwitchValue(PIN) << 2) | SwitchValue(n));
+        }
+    }
+    return 0xff;
+}
 
 /* ========================================================================== */
 
-#endif // UNUSED_STEPPING_MOTOR
+#endif // UNUSED_KEY_4X4

@@ -24,7 +24,7 @@
  *   - LCD1602_DEFINE_RS: 寄存器选择引脚
  *   - LCD1602_DEFINE_RW: 读/写引脚
  *   - LCD1602_DEFINE_EN: 使能引脚
- *   - LCD1602_DATA: LCD1602 与 单片机连接的 数据引脚s
+ *   - LCD1602_DATA: LCD1602 与 单片机连接的 数据引脚
  * 
  * 如果需要使用从 LCD1602 上读取数据, 需要定义宏:
  *   - LCD1602_NEED_READ_DATA: 这将会编译 LCD1602_Read 函数
@@ -35,11 +35,20 @@
 
 /* ========================================================================== */
 
+/**
+ * @param cmd: 要设置的 LCD1602 命令
+*/
 void LCD1602_Cmd(unsigned char cmd);    // 写入命令 命令1-8
 
+/**
+ * @param dat: 要显示在 LCD1602 当前光标位置的字符 ascii 码
+*/
 void LCD1602_Write(unsigned char dat);  // 写入数据 命令10
 
 #ifdef LCD1602_NEED_READ_DATA
+/**
+ * @return dat: 获取在 LCD1602 当前光标位置的字符 ascii 码
+*/
 unsigned char LCD1602_Read(void);       // 读数据 命令11
 #endif
 
@@ -65,6 +74,12 @@ extern bit lcd1602_timeout;
 #define Return_Cursor           0x02    // 0x02-0x03
 
 // 命令3：输入字符后 屏幕/光标 移动
+/**
+ * @bug: 应该是 lcd1602 的特性导致, 清屏后光标自减(左移)和屏幕左移都会被重置为右移
+ *       所以建议, 在初始化的时候, 按照指令顺序初始化, 即 先清屏
+ * 注意: 设置屏幕左移, 若屏幕在最左端, 则会翻页至最后一页, 需要注意设置的光标和屏幕位置
+ *      建议是, 别用
+*/
 #define Mode_ScreenLeftMove     0x05    // 屏幕左移
 #define Mode_ScreenRightMove    0x07    // 屏幕右移
 #define Mode_CursorLeftMove     0x04    // 光标自减
@@ -97,15 +112,15 @@ extern bit lcd1602_timeout;
 
 // 命令7：设置字库地址 0x40-0x5f
 // 命令8：设置光标位置 0x80-0xa7  0xc0-0xe7
-#if 1
-#define Move_CGROM_ADDRESS(X)   (0x40 | (X))
-#define Move_Cursor_Row1_Col(X) (0x80 | (X))
-#define Move_Cursor_Row2_Col(X) (0xc0 | (X))
-#else 
-// 上面的宏定义方式会检查是否合法 但是会使得代码膨胀 如果熟练运用LCD1602的指令 使用下面的定有方式更好
+#if 0
 #define Move_CGROM_ADDRESS(X) ((0x00 <= (X) && (X) <= 0x1f) ? 0x40 | (X) : 0)
 #define Move_Cursor_Row1_Col(X) ((0x00 <= (X) && (X) <= 0x27) ? 0x80 | (X) : 0)
 #define Move_Cursor_Row2_Col(X) ((0x00 <= (X) && (X) <= 0x27) ? 0xc0 | (X) : 0)
+#else 
+// 上面的宏定义方式会检查是否合法 但是会使得代码膨胀 如果熟练运用LCD1602的指令 使用下面的定有方式更好
+#define Move_CGROM_ADDRESS(X)   (0x40 | (X))
+#define Move_Cursor_Row1_Col(X) (0x80 | (X))
+#define Move_Cursor_Row2_Col(X) (0xc0 | (X))
 #endif
 
 /* ========================================================================== */
@@ -124,5 +139,7 @@ extern bit lcd1602_timeout;
  * 10. 写入数据           10 0x00-0xff (后面为读取的数据)
  * 11. 读取数据           11 0x00-0xff (后面为写入的数据)
 */
+
+/* ========================================================================== */
 
 #endif // LCD1602_H

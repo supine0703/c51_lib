@@ -60,6 +60,7 @@ sbit ECHO = HC_SR04_DEFINE_ECHO;
 */
 unsigned int HC_SR04_Millimeter(void)
 {
+    unsigned int v;
     TIMER_INIT;
     TRIG = 0;
     TRIG = 1; // 触发信号
@@ -71,7 +72,18 @@ unsigned int HC_SR04_Millimeter(void)
     while (ECHO)
         ; // 等待结束探测
     TIMER_STOP;
-    return (unsigned int)(TIME_VALUE * 0.17);
+    v = TIME_VALUE;
+#if 0
+    // float, 开销很大
+    return (unsigned int)(v * 0.17); 
+#else    
+    /**
+     * (v * 0.17) => (v * (0.25 - 0.08)) => (v * (1/4 - 2/25))
+     * 根据不同数据, 性能是原来 3-12 倍
+     * 空间节约大约 1400B
+    */
+    return ((v >> 2) - ((v / 25) << 1));
+#endif
 }
 
 /* ========================================================================== */

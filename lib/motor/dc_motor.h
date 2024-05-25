@@ -21,6 +21,10 @@
 #define DC_MOTOR_H
 
 /**
+ * 使用建议:
+ *   - 在 '__config__.h' 中定义宏 DEFINE_DC_MOTOR
+ *     然后再需要使用的 .c 文件中 定义 sbit dcm = DEFINE_DC_MOTOR
+ *  
  * 直流电机最常见的驱动方式是: 施加PWM(脉宽调制)脉冲波
  * 即 在一个时间周期内, 调整运行的时间占比来控制直流电机的转速
  * 
@@ -39,13 +43,13 @@
  * 使用方法为:
  * 1. 定义: 周期计数最大值: max, 脉宽调制(运行占比): pwm(run), 计数器: count
  * 2. 条件判断: 
-       if (++count < pwm) { work = 1; }
-       else if (count < max) { work = 0; }
-       else { count = 0; }
- * 或者:
-       if (++count == max) { work = 1; count = 0; }
-       else if (count == pwm) { work = 0; }
- * 注意: 不要调换两个判断条件的顺序, work = 1 优先级比 work = 0 高
+        if (++count < pwm) { dcm = 1; }
+        else if (count < max) { dcm = 0; }
+        else { count = 0; }
+ * 或者 (下面思路是临态切换, 建议使用上面 虽然代码多一行):
+        if (++count == max) { dcm = 1; count = 0; }
+        else if (count == pwm) { dcm = 0; }
+ * 注意: 不要调换两个判断条件的顺序, dcm = 1 优先级比 dcm = 0 高
 */
 
 #endif // DC_MOTOR_H

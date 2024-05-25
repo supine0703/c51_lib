@@ -17,14 +17,19 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "__config__.h"
 #include "delay/delay_c52.h"
+#include "__config__.h"
 
 extern void _nop_(void);
 
 #ifdef DELAY_USE_HZ
 
 /* ========================================================================== */
+
+/**
+ * 因为 10us 太短, 为了减少误差, '0' 为特殊取值, 等价于 256 , 
+ * 1ms 则正常, 仅包含调用耗时, 分别是 11, 17 个机器周期
+*/
 
 #if DELAY_USE_HZ == 11059200
 
@@ -59,14 +64,14 @@ void Delay10us(unsigned char t)
 #endif // UNUSED_DELAY_10US
 
 #ifndef UNUSED_DELAY_1MS
-void Delay1ms(unsigned int t) 
+void Delay1ms(unsigned int t)
 {
     unsigned char i;
     while (t)
     {
-		--t;
+        --t;
         for (i = (t ? 151 : 149); i; --i)
-			;
+            ;
     }
 }
 #endif // UNUSED_DELAY_1MS
