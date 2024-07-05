@@ -49,45 +49,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 <div STYLE="page-break-after: always;"></div>
 
 
-<!-- # Delay @24MHz
-```cpp
-// delay.c
-#include "__type__.h"
-
-extern void _nop_(void);
-
-void Delay5us(u8 t)
-{ // 误差 0%
-    u8 i;
-    _nop_();
-    _nop_();
-    while (t)
-    {
-        i = t == 1 ? 21 : 26;
-        while (--i)
-            ;
-        t--;
-    }
-}
-
-void Delay1ms(u16 t)
-{ // 平均误差不足 0.005% 越大误差越小, 几乎是无误差
-    u8 i, j;
-    while (t)
-    {
-        for (i = 24; i; --i)
-            for (j = 248; j; --j)
-                ;
-        for (i = 8; i; --i)
-            ;
-        --t;
-    }
-}
-```
-
-<div STYLE="page-break-after: always;"></div> -->
-
-
 # KEY_4X4
 ```cpp
 // __config__.h

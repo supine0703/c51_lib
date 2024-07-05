@@ -287,7 +287,7 @@ void updateShow(void)
         count_x1 = 0;
 
         lcd_cmd(0x86);
-        // lcd_printf("%4.2f", adc_result(LDR) * VOLTAGE / 1024); // 显示电压值
+        lcd_printf("%4.2f", adc_result(LDR) * VOLTAGE / 1024); // 显示电压值
     }
     showTime();
 }
