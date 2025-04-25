@@ -1,0 +1,1207 @@
+***beta版本, 是为竞赛准备的版本, 相较于 'lib' 可能会有缺省或精简的部分, 模块封装耦合度更高***
+
+# 目录 <!-- omit in toc -->
+- [Copyright](#copyright)
+- [项目架构](#项目架构)
+- [架构Demo](#架构demo)
+  - [`main.c`](#mainc)
+  - [`system.h`](#systemh)
+  - [`system.c`](#systemc)
+  - [`__type.h__.h`](#__typeh__h)
+  - [`__config__.h`](#__config__h)
+  - [`__function__.h`](#__function__h)
+- [模块库](#模块库)
+  - [Delay 24MHz](#delay-24mhz)
+  - [KEY 4X4](#key-4x4)
+  - [LCD12864](#lcd12864)
+  - [I2C](#i2c)
+  - [AT24C](#at24c)
+  - [DS1302](#ds1302)
+    - [日期相关函数](#日期相关函数)
+  - [ADC](#adc)
+  - [PWM](#pwm)
+    - [应用](#应用)
+  - [DHT11](#dht11)
+  - [STEP\_MOTOR](#step_motor)
+  - [HC\_SR04](#hc_sr04)
+  - [DS18B20](#ds18b20)
+- [示例程序](#示例程序)
+
+<div style="page-break-after: always;"></div>
+
+# Copyright
+```
+This file is part of the c51_lib, see <https://github.com/supine0703/c51_lib>.
+Copyright (c) 2024-2025 李宗霖 <email: supine0703@outlook.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+```
+
+# 项目架构
+- main
+  - STARTUP.A51
+  - main.c
+  - system.h
+  - system.c: 如果功能复杂, 可以将功能部分丢进来, 减少 'main.c' 的体积
+- header:
+  - \_\_type.h\_\_.h: 定义 'u8', 'u16'
+  - \_\_config\_\_.h: 定义所有引脚宏和申明延迟函数
+  - \_\_function.h\_\_.h: 申明所有模块需要用到的函数
+- include:
+  - *.h: 一些基类模块定义头更方便 eg.'i2c'
+- source:
+  - *.c: 所有模块的实现
+
+<div style="page-break-after: always;"></div>
+
+# 架构Demo
+
+## `main.c`
+```cpp
+#include "__config__.h"
+#include "system.h"
+
+#define PMZ(P)    (P##M1 = P##M0 = 0x00)             // 置零
+#define PPO(P, B) (BIT_L(P##M1, B), BIT_H(P##M0, B)) // 推挽输出
+
+void io_init() {
+    PMZ(P0);
+    PMZ(P1);
+    PMZ(P2);
+    PMZ(P3);
+    PMZ(P4);
+    PMZ(P5);
+    PMZ(P6);
+    PMZ(P7);
+
+    // lcd
+    PPO(P2, 0); // RS
+    PPO(P2, 1); // RW
+    PPO(P2, 2); // EN
+}
+
+void main() {
+    io_init();
+    lcd_action();
+    while (1) {
+        lcd_refresh();
+        delay_1ms(200);
+    }
+}
+```
+
+## `system.h`
+```cpp
+#ifndef _SYSTEM_H_
+#define _SYSTEM_H_
+
+// lcd
+void lcd_action();
+void lcd_refresh();
+
+#endif // _SYSTEM_H_
+```
+
+## `system.c`
+```cpp
+#include "__function__.h"
+#include "system.h"
+
+void lcd_action() {
+    // 初始化
+    lcd_cmd(0x30); // 普通指令
+    lcd_cmd(0x01); // 清屏
+    lcd_cmd(0x06); // 模式光标右移
+    lcd_cmd(0x0e); // 0c: 无光标; 0e: 有光标
+    // ... 开机动画
+}
+
+void lcd_refresh() {
+    // 刷新显示
+}
+```
+
+## `__type.h__.h`
+```cpp
+#ifndef __TYPE__
+#define __TYPE__
+
+typedef signed char s8;
+typedef signed int s16;
+typedef unsigned char u8;
+typedef unsigned int u16;
+
+#endif // __TYPE__
+```
+
+## `__config__.h`
+```cpp
+#ifndef __CONFIG__
+#define __CONFIG__
+
+#include "STC15.H"
+#include "__type__.h"
+
+// delay 24MHz
+extern void _nop_(void);
+extern void delay_5us(u8 t);
+extern void delay_1ms(u16 t);
+
+// lcd
+#define LCD_DATA P0
+#define LCD_RS   P2 ^ 0
+#define LCD_RW   P2 ^ 1
+#define LCD_EN   P2 ^ 2
+
+// ...
+#define BIT_H(N, B) (N) |= (1 << (B))
+#define BIT_L(N, B) (N) &= ~(1 << (B))
+
+#endif // __CONFIG__
+```
+
+## `__function__.h`
+```cpp
+// 函数的申明
+#ifndef __FUNCTION__
+#define __FUNCTION__
+
+#include "__type__.h"
+
+// delay 24MHz
+extern void _nop_(void);
+extern void delay_5us(u8 t);
+extern void delay_1ms(u16 t);
+
+// lcd
+extern void lcd_cmd(u8 cmd);
+extern void lcd_show(u8 dat);
+extern void lcd_printf(const char* format, ...);
+
+#endif // __FUNCTION__
+```
+
+<div style="page-break-after: always;"></div>
+
+# 模块库
+
+## Delay 24MHz
+```cpp
+// delay.c
+#include "__type__.h"
+
+extern void _nop_(void);
+```
+```cpp
+void delay_5us(u8 t) {
+    u8 i;
+    _nop_();
+    _nop_();
+    while (t) {
+        i = (t == 1 ? 21 : 26);
+        while (--i) {}
+        t--;
+    }
+}
+```
+```cpp
+void delay_1ms(u16 t) {
+    u8 i, j;
+    while (t) {
+        for (i = 24; i; --i) {
+            for (j = 248; j; --j) {}
+        }
+        for (i = 8; i; --i) {}
+        --t;
+    }
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## KEY 4X4
+```cpp
+// __function__.h
+extern u8 key_value();
+```
+
+```cpp
+// __config__.h
+#define KEY_PIN   P7
+#define KEY_DELAY delay_1ms(5)
+```
+
+```cpp
+// key_4x4.c
+#include "__config__.h"
+#define PIN KEY_PIN
+```
+```cpp
+u8 switch_value(u8 v) {
+    switch (v) {
+    case 0x0e:              case 0xe0: return 0x00;
+    case 0x0d: return 0x01; case 0xd0: return 0x04;
+    case 0x0b: return 0x02; case 0xb0: return 0x08;
+    case 0x07: return 0x03; case 0x70: return 0x0c;
+    default:
+        return 0xff;
+    }
+}
+```
+```cpp
+u8 key_value() {
+    u8 n;
+    PIN = 0x0f; // 列检测
+    _nop_(); _nop_();
+    if (PIN != 0x0f) {
+        n = PIN;
+        KEY_DELAY; // 按键消抖
+        if (n == PIN) {
+            PIN = 0xf0; // 行检测
+            n = switch_value(n);
+            return (switch_value(PIN) | n);
+        }
+    }
+    return 0xff;
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## LCD12864
+***指令表 (不全, 部分几乎完全不用的指令省了)***
+| 指令          | 普通指令     | 扩展指令         |
+| :------------ | :----------- | :--------------- |
+| **0x01**      | 清屏         | 待命模式         |
+| **0x02**      | 光标返回     |                  |
+| **0x03**      |              | 允许输入卷动地址 |
+| **0x04**      | 模式光标左移 | 令第一行反白     |
+| **0x05**      | 模式文字右移 | 令第二行反白     |
+| **0x06**      | 模式光标右移 | 令第三行反白     |
+| **0x07**      | 模式文字左移 | 令第四行反白     |
+| **0x08**      | 屏幕关闭     | 进入睡眠模式     |
+| **0x0c**      | 亮屏光标关闭 | 退出睡眠模式     |
+| **0x0e**      | 亮屏光标开启 |                  |
+| **0x0f**      | 亮屏光标闪烁 |                  |
+| **0x10**      | 光标左移     |                  |
+| **0x14**      | 光标右移     |                  |
+| **0x18**      | 文字左移     |                  |
+| **0x1c**      | 文字右移     |                  |
+| **0x30**      | 普通指令     | 普通指令         |
+| **0x34**      | 扩展指令     | 扩展指令         |
+| **0x36**      |              | 绘图模式打开     |
+| **0x40-0x7f** |              | 卷动/IRAM地址    |
+| **0x80**      | 第1行        |                  |
+| **0x90**      | 第2行        |                  |
+| **0x88**      | 第3行        |                  |
+| **0x98**      | 第4行        |                  |
+| **0x80-0xff** |              | 设定绘图RAM      |
+
+```cpp
+// __function__.h
+extern void lcd_cmd(u8 cmd);
+extern void lcd_show(u8 dat);
+extern void lcd_printf(const char* format, ...);
+```
+
+```cpp
+// __config__.h
+#define LCD_DATA P0
+#define LCD_RS   P2 ^ 0
+#define LCD_RW   P2 ^ 1
+#define LCD_EN   P2 ^ 2
+// 可选定义缓冲区大小
+#define LCD_PRINTF_BUFFER_SIZE 64
+```
+
+```cpp
+// lcd.c
+#define DT LCD_DATA
+sbit RS = LCD_RS;
+sbit RW = LCD_RW;
+sbit EN = LCD_EN;
+#ifndef LCD_PRINTF_BUFFER_SIZE
+    #define LCD_PRINTF_BUFFER_SIZE 64
+#endif
+static u8 xdata s_buf[LCD_PRINTF_BUFFER_SIZE];
+```
+```cpp
+static void write(bit rs, u8 byte) {
+    EN = 0;
+    RS = rs;
+    RW = 0;
+    DT = byte;
+    EN = 1;
+    EN = 0;
+    delay_5us(15); // at least 72us
+}
+```
+```cpp
+void lcd_cmd(u8 cmd) {
+    write(0, cmd);
+    if (cmd == 0x01) {
+        delay_5us(200);
+        delay_5us(105); // clear need 1.6ms
+    }
+}
+```
+```cpp
+void lcd_show(u8 dat) {
+    write(1, dat);
+}
+```
+```cpp
+#include <stdarg.h>
+extern int vsprintf(char*, const char*, char*);
+void lcd_printf(const char* format, ...) {
+    u8 xdata* s = s_buf;
+    va_list args; // 定义可变参数列表数据类型的变量arg
+
+    va_start(args, format);        // 从format开始，接收参数列表到arg变量
+    vsprintf(s_buf, format, args); // 打印格式化字符串和参数列表到字符数组中
+    va_end(args);                  // 结束变量arg
+
+    while (*s) {
+        lcd_show(*s++);
+    }
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## I2C
+```cpp
+// __config__.h
+#define I2C_SDA P6 ^ 6
+#define I2C_SCL P6 ^ 7
+```
+
+```cpp
+// i2c.h
+#ifndef I2C_H
+#define I2C_H
+
+#include "__type__.h"
+
+void i2c_start();
+void i2c_stop();
+void i2c_ack(bit a);
+bit i2c_check_ack();
+void i2c_transmit(u8 dat);
+u8 i2c_receive();
+
+#endif // I2C_H
+```
+
+```cpp
+// i2c.c
+#include "i2c.h"
+#include "__config__.h"
+
+sbit SDA = I2C_SDA; // 数据
+sbit SCL = I2C_SCL; // 时钟
+```
+```cpp
+void i2c_start() {
+    SCL = 1;
+    SDA = 1;
+    delay_5us(1); // 大于 4.7us
+    SDA = 0;
+    delay_5us(1); // 大于 4us
+    SCL = 0;
+}
+```
+```cpp
+void i2c_stop() {
+    SCL = 0;
+    SDA = 0;
+    SCL = 1;
+    delay_5us(1); // 大于 4us
+    SDA = 1;
+    delay_5us(1); // 大于 4.7us
+}
+```
+```cpp
+void i2c_ack(bit a) {
+    SDA = !a;
+    SCL = 1;
+    delay_5us(1); // 大于 4us
+    SCL = 0;
+    SDA = a;
+}
+```
+```cpp
+bit i2c_check_ack() {
+    bit na;
+    SDA = 1;
+    delay_5us(1); // 大于 4us
+    SCL = 1;
+    delay_5us(1); // 大于 4us
+    na = SDA;
+    SCL = 0;
+    return !na;
+}
+```
+```cpp
+void i2c_transmit(u8 byte) {
+    u8 i;
+    SCL = 0;
+    for (i = 8; i; --i) {
+        SDA = (bit)(byte & 0x80);
+        SCL = 1;
+        delay_5us(1);
+        SCL = 0;
+        byte <<= 1;
+        delay_5us(1);
+    }
+    SDA = 1;
+    delay_5us(1);
+}
+```
+```cpp
+u8 i2c_receive() {
+    u8 i, dat;
+    SDA = 1;
+    for (i = 8; i; --i) {
+        dat <<= 1;
+        SCL = 0;
+        delay_5us(1);
+        SCL = 1;
+        delay_5us(1);
+        dat |= SDA;
+    }
+    SCL = 0;
+    delay_5us(1);
+    return dat;
+}
+```
+
+<!-- <div style="page-break-after: always;"></div> -->
+
+## AT24C
+```cpp
+// __function__.h
+extern void at24c_read(u16 addr, u8* dat, u8 len);
+extern void at24c_write(u16 addr, u8* dat, u8 len);
+```
+
+```cpp
+// at24c.c
+#include "__config__.h"
+
+#include "i2c.h" // 需要依赖 I2C
+```
+```cpp
+static bit transmit_byte(u8 byte) {
+    i2c_transmit(byte);
+    return i2c_check_ack();
+}
+```
+```cpp
+// device: 用于在多个at24c中选择
+static bit check(u8 device) {
+    i2c_start();
+    if (transmit_byte(0xa0 | (device & 0x0f))) {
+        return 1;
+    }
+    i2c_stop();
+    return 0;
+}
+```
+```cpp
+static bit inquiry(u16 addr) {
+    // at24c512: 地址访问需要高低两字节
+    return (check(0) && transmit_byte(addr >> 8) && transmit_byte(addr & 0xff));
+}
+```
+```cpp
+void at24c_read(u16 addr, u8* dat, u8 len) {
+    if (len == 0) {
+        return;
+    }
+    if (inquiry(addr)) {
+        // 重新启动I2C总线
+        if (check(1)) {
+            do {
+                *dat++ = i2c_receive();
+                i2c_ack(--len > 0);
+            } while (len);
+        }
+        i2c_stop();
+    }
+}
+```
+```cpp
+// 页写入时序 最多为 页写缓冲器的大小 字节 超出会被循环覆盖
+void at24c_write(u16 addr, u8* dat, u8 len) {
+    // at24c512, 一页应该是 128 byte
+    if (len == 0) {
+        return;
+    }
+    if (inquiry(addr)) {
+        do {
+            if (!transmit_byte(*dat++)) {
+                break;
+            }
+        } while (--len);
+        i2c_stop();
+        delay_1ms(10); // 至少 5ms
+    }
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## DS1302
+```cpp
+// __function__.h
+extern void ds1302_init();
+extern void ds1302_get(u8* dat); // 7个字节: 秒分时日月周年
+extern void ds1302_set(u8* dat); // 7个字节: 秒分时日月周年
+```
+
+```cpp
+// __config__.h
+#define DS1302_SCK P3 ^ 5
+#define DS1302_SDA P3 ^ 6
+#define DS1302_CE  P5 ^ 4
+```
+
+```cpp
+// ds1302.c
+#include "__config__.h"
+
+sbit SCK = DS1302_SCK; // 时钟
+sbit SDA = DS1302_SDA; // 数据
+sbit CE  = DS1302_CE;  // DS1302 使能(复位)
+
+#define CONTROL     0x8e // 控制 WP: 0x00: 写允许, 0x80: 写禁止
+#define CLOCK_BURST 0xbe
+
+#define RD   1
+#define WT   0
+#define WAIT do { _nop_(); _nop_(); } while (0)
+
+```
+```cpp
+static void start() {
+    CE = 0; WAIT; // at least: 2v: 200ns; 5v: 50ns
+    SCK = 0; WAIT;
+    CE = 1; WAIT; // 启动
+}
+```
+```cpp
+static void reset() {
+    CE = 0; WAIT;
+    CLK = 1; WAIT;
+    SDA = 0; WAIT;
+    SDA = 1; WAIT;
+}
+```
+```cpp
+static void write_byte(u8 byte) {
+    u8 i;
+    for (i = 8; i; --i) {
+        SCK = 0;
+        SDA = byte & 0x01;
+        byte >>= 1;
+        SCK = 1; // 上升沿写入
+    }
+}
+```
+```cpp
+static u8 read_byte() {
+    u8 i, byte = 0;
+    for (i = 8; i; --i) {
+        SCK = 0; // 下降沿读取
+        byte >>= 1;
+        if (SDA) {
+            byte |= 0x80; // 每次传输低字节
+        }
+        SCK = 1;
+    }
+    return byte;
+}
+```
+```cpp
+// 如果不对SDA初始化, 第一次读取多字节会出现混乱
+void ds1302_init() {
+    start();
+    reset();
+}
+```
+```cpp
+// 7个字节: 秒分时日月周年
+// eg. {40, 9, 14, 18, 5, 6, 24}; 40秒 9分 14时 18日 5月 周六 24年
+void ds1302_get(u8* get) {
+    u8 i;
+    start();
+    write_byte(CLOCK_BURST | RD);
+    for (i = 0; i < 7; ++i) {
+        get[i] = read_byte();
+        get[i] = ((get[i] >> 4) * 10) + (get[i] & 0x0f); // BCD -> 10进制
+    }
+    read_byte(); // 读取写使能
+    reset(); // 复位
+}
+```
+```cpp
+// 7个字节: 秒分时日月周年
+void ds1302_set(u8* set) {
+    u8 i;
+    start();
+    write_byte(CONTROL | WT);
+    write_byte(0x00); // 写使能
+    CE = 0; WAIT;
+
+    start();
+    write_byte(CLOCK_BURST | WT);
+    for (i = 0; i < 7; ++i) {
+        write_byte(((set[i] / 10) << 4) + (set[i] % 10));
+    }
+    write_byte(0x80); // 写禁止
+    CE = 0;
+}
+```
+
+### 日期相关函数
+```cpp
+// 返回每月天数, 包含计算闰年
+u8 month_days(u16 year, u8 month) {
+    static u8 code days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month == 0 || month > 12) {
+        return 0;
+    }
+    if (month == 2 && ((year & 3) == 0)) {
+        return 29;
+    }
+    return days[month - 1];
+}
+```
+```cpp
+// 返回星期几，0=星期六, 1=星期日, ..., 6=星期五
+u8 what_day(u16 year, u8 month, u8 day) {
+    // 1 月、2 月视为上一年的 13、14 月
+    if (month < 3) {
+        --year;
+        month += 12;
+    }
+    int J = year / 100; // 年份的前两位
+    int K = year % 100; // 年份的后两位
+    return (day - 1 + (((month + 1) * 13) / 5) + (K / 4) + (J / 4) + K - (J * 2)) % 7;
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## ADC
+```cpp
+// __function__.h
+extern u16 adc_result(u8 ch); // 0-7 选择 P10-P17
+```
+
+```cpp
+// __config__.h
+#define LDR 0 // P10 智慧农业 光敏电阻
+#define POT 0 // P10 智能小车 电位器
+```
+
+```cpp
+// adc.c
+#include "__config__.h"
+
+// 定义 ADC_CONTR 寄存器位取值
+#define ADC_FLAG  0x10 // ADC complete flag  模数转换结束标志位
+#define ADC_POWER 0x80 // ADC power control bit  模数转换电源控制位
+#define ADC_START 0x08 // ADC start control bit  模数转换启动控制位
+// 每当手动将其置 1 后, AD转换开始, 当AD转换结束后这个位就会自动置 0
+
+// 0x00: 540 clocks; 0x20: 360 clocks; 0x40: 180 clocks; 0x90: 90 clocks;
+#define ADC_SPEED 0x00 // 转换速度控制位SPEED0和SPEED1
+```
+
+```cpp
+// ch: 0-7 选择 P10-P17 (ADC_CONTR 寄存器的后3位)
+u16 adc_result(u8 ch) {
+    u16 Vo;
+    P1ASF = (1 << ch); // 开启ADC,采集 P1^ch 引脚的值
+    ADC_CONTR = ADC_POWER | ADC_START | ADC_SPEED | ch; // 0x80 | 0x08 | 0x00 | ch
+
+    // 设置 ADC_CONTR 寄存器后需加4个CPU时钟周期的延时，才能保证值被写入 ADC_CONTR 寄存器
+    _nop_(); _nop_(); _nop_(); _nop_();
+    while (!(ADC_CONTR & ADC_FLAG)) {} // 等待ADC完成
+    ADC_CONTR &= ~ADC_FLAG;            // 转换标志位: 手动将其置0 等待下次硬件置1
+
+    /**
+     * @param CLK_DIV: 第5位控制存储模式 默认 0
+     * 0: ADC_RES(高8位) + ADC_RESL(低2位)
+     * 1: ADC_RESL(高2位) + ADC_RES(低8位)
+     */
+    Vo = ((u16)ADC_RES << 2) | ADC_RESL;
+    return Vo; // (Vo * 3.3 / 1024) (求出电压值)
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## PWM
+```cpp
+// __function__.h
+extern void pwm_init();
+extern void pwm_clk(u8 ps); // 设置时钟源 0-15: sys_clk / (ps + 1); 16: t2
+extern void pwm_set(u16 first, u16 second, u16 cycles);
+```
+
+```cpp
+// __config__.h
+#define PWM_ID 7 // PWM_7: P17  智慧农业 pwm led
+#define PWM_ID 6 // PWM_6: P16  智能小车 pwm dc motor 最好大于50%
+```
+
+```cpp
+// pwm.c
+#include "__config__.h"
+
+#define EAXSFR BIT_H(P_SW2, 7)
+#define EAXRAM BIT_L(P_SW2, 7)
+
+#define PWM_CR(X)   PWM##X##CR
+#define PWM_T1(X)   PWM##X##T1
+#define PWM_T2(X)   PWM##X##T2
+```
+```cpp
+// pwm.c
+void pwm_init() {
+    EAXSFR;                    // 访问XFR
+    PWM_CR(PWM_ID) = 0;        // PWM7CR = 0;
+    BIT_H(PWMCR, PWM_ID - 2);  // 相应的端口为PWM输出口，受PWM波形发生器控制
+    BIT_L(PWMCFG, PWM_ID - 2); // 0010 0000 PWM 初始低电平, 不自动触发ADC
+    EAXRAM;                    // 恢复访问XRAM
+    // 下面改为外部去调用
+    // PWMCR &= ~0x40; // 禁止PWM计数器归零中断
+    // PWMCR |= 0x80;  // 使能PWM波形发生器，PWM计数器开始计数
+}
+```
+```cpp
+void pwm_clk(u8 ps) {
+    EAXSFR; // 访问XFR
+    PWMCKS = ps & 0x1f; // 设置时钟源 0-15: sys_clk / (ps + 1); 16: t2
+    EAXRAM; // 恢复访问XRAM
+}
+```
+```cpp
+void pwm_set(u16 first, u16 second, u16 cycles){
+    // 设置 pwm 波(周期和两次翻转)  1~32767(0x7fff)
+    EAXSFR; // 访问XFR
+    PWM_T1(PWM_ID) = first;  // PWM7T1 = first;
+    PWM_T2(PWM_ID) = second; // PWM7T2 = second;
+    PWMC           = cycles;
+    EAXRAM; // 恢复访问XRAM
+}
+```
+```cpp
+// 中断
+void PWMIF_int(void) interrupt 22 {
+    // PWM计数器归零中断标志
+    if (PWMIF & 0x40) {
+        PWMIF &= ~0x40; // 清除中断标志
+    }
+    // PWM2 中断标志
+    if (PWMIF & 0x01) { PWMIF &= ~0x01; }
+    // PWM3 中断标志
+    if (PWMIF & 0x02) { PWMIF &= ~0x02; }
+    // PWM4 中断标志
+    if (PWMIF & 0x04) { PWMIF &= ~0x04; }
+    // PWM5 中断标志
+    if (PWMIF & 0x08) { PWMIF &= ~0x08; }
+    // PWM6 中断标志
+    if (PWMIF & 0x10) { PWMIF &= ~0x10; }
+    // PWM7 中断标志
+    if (PWMIF & 0x20) { PWMIF &= ~0x20; }
+}
+void PWMFDCR_int(void) interrupt 23 {
+    // PWM异常检测中断标志位
+    if (PWMFDCR & 0x01) {
+        PWMFDCR &= ~0x01; // 清除中断标志
+    }
+}
+```
+
+### 应用
+```cpp
+pwm_clk(0x0b);          // clk: 2MHz
+pwm_set(0, 10, 1000);   // led: 2000Hz
+PWMCR |= 0x80;          // 使能PWM波形发生器，PWM计数器开始计数
+PWMCR &= ~0x40;         // 禁止PWM计数器归零中断
+```
+
+<div style="page-break-after: always;"></div>
+
+## DHT11
+```cpp
+// __function__.h
+extern bit dht11_read(float* r, float* t); // 湿度, 温度
+```
+
+```cpp
+// __config__.h
+#define DHT11_DQ P1 ^ 1 // 和步进电机冲突, 设置为双向IO口
+```
+
+```cpp
+// dht11.c
+#include "__config__.h"
+
+sbit DQ = DHT11_DQ;
+```
+```cpp
+// @return: 1-存在; 0-不存在;
+static bit check(void) {
+    bit x;
+    DQ = 1; // 复位DQ
+    DQ = 0;
+    delay_1ms(18); // 拉低大于 18ms
+    DQ = 1;
+    delay_5us(8); // 20~40us, 80us之内
+    x = !DQ;      // 接收响应低电平
+    delay_5us(8); // DHT11总共拉低 80us
+    return x;     // 后拉高 80us
+}
+```
+```cpp
+// @return: 期待 DQ 的值是 v, 如果超时未响应 则返回 0, 否则 DQ == v 返回 1
+static bit wait_DQ(bit v, u8 t) {
+    while (DQ != v && --t) {
+        delay_5us(1);
+    }
+    return t != 0;
+}
+```
+```cpp
+// 拉低 50us, 拉高 0: 26~28us, 1: 70us; 拉低(next bit)
+static bit read_byte(u8* byte) {
+    u8 i, tmp;
+    if (!wait_DQ(0, 40)) {
+        return 0; // 等待进入低电平, 超过 200us 退出
+    }
+
+    for (tmp = 0, i = 8; i; --i) {
+        if (!wait_DQ(1, 20)) {
+            return 0; // 等待50us低电平过去, 超过 100us 退出
+        }
+        delay_5us(9); // 延时45us，如果还为高则数据为1，否则为0
+        tmp <<= 1;
+        // 数据为1时，使dat加1来接收数据1
+        if (DQ) {
+            tmp |= 1;
+            if (!wait_DQ(0, 20)) {
+                return 0; // 等待电平拉低, 超过 100us 退出
+            }
+        }
+    }
+
+    if (byte) {
+        *byte = tmp;
+    }
+    return 1;
+}
+```
+```cpp
+// DHT11通电后需要先放置 2s 等待内部启动, 立即读取不会应答
+bit dht11_read(float* r, float* t) {
+    u8 chkSum, r_h, t_h, r_l, t_l;
+
+    if (!check()) return 0;
+
+    delay_5us(16); // 拉高80us后, 开始接收数据
+
+    if (!read_byte(&r_h))    return 0; // 接收湿度高八位
+    if (!read_byte(&r_l))    return 0; // 接收湿度低八位
+    if (!read_byte(&t_h))    return 0; // 接收温度高八位
+    if (!read_byte(&t_l))    return 0; // 接收温度低八位
+    if (!read_byte(&chkSum)) return 0; // 接收校正和
+
+    DQ = 1; // 结束
+    // 最后一字节为校验位，校验是否正确
+    if ((r_h + t_h + r_l + t_l) == chkSum) {
+        if (r) *r = r_h + r_l * 0.1;
+        if (t) *t = t_h + t_l * 0.1;
+    }
+    return 1;
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## STEP_MOTOR
+```cpp
+// __function__.h
+extern void step_motor_run(bit s, u16 size); // s: 0: 顺时针, 1: 逆时针; size: 转动圈数
+```
+
+```cpp
+// __config__.h
+#define STEP_MOTOR P1, 1 // P1^1, P1^2, P1^3, P1^4
+// P11, 和智慧农业的温湿度冲突; P14, 和智慧农业的红外冲突
+```
+
+```cpp
+// step_motor.c
+#include "__config__.h"
+
+#define SM_SET(P, B, V) (P &= ~(0x0f << (B)), P |= (V) << (B))
+#define SM_P_SET(PB, V) SM_SET(PB, V)
+```
+```cpp
+static u8 code spm_turn[] = {
+    0x08, 0x0a, 0x0c, 0x0e, 0x04, 0x06, 0x02, 0x00,
+};
+// s 0: 顺时针, 1: 逆时针; size = 512 转一圈
+void step_motor_run(bit s, u16 size) {
+    s8 i;
+    while (size--) {
+        if (s) {
+            for (i = 0; i < 8; ++i) {
+                SM_P_SET(STEP_MOTOR, spm_turn[i]);
+                delay_1ms(1);
+            }
+        } else {
+            for (i = 7; i >= 0; --i) {
+                SM_P_SET(STEP_MOTOR, spm_turn[i]);
+                delay_1ms(1);
+            }
+        }
+    }
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## HC_SR04
+```cpp
+// __function__.h
+extern float hc_sr04_result(); // 返回距离 cm
+```
+
+```cpp
+// __config__.h
+#define HC_SR04_TRIG P1 ^ 5
+#define HC_SR04_ECHO P3 ^ 4
+```
+
+```cpp
+// hc_sr04.c
+#include "__config__.h"
+sbit TRIG = HC_SR04_TRIG;
+sbit ECHO = HC_SR04_ECHO;
+```
+```cpp
+float hc_sr04_result() {
+    u16 i;                     // 用于防止未连接超声波传感器卡死
+    AUXR &= 0x7f;              // 定时器时钟12T模式
+    TMOD &= 0xf0;              // 设置定时器模式
+    TMOD |= 0x01;              // 设置定时器模式
+    TH0 = TL0 = TR0 = TF0 = 0; // 最长 32768us
+
+    TRIG = 0;
+    TRIG = 1; // 触发信号
+    delay_5us(2);       // 拉高 10us
+    TRIG = 0;
+
+    // 等待开始探测
+    for (i = 65535; i; --i) {
+        if (ECHO) {
+            TR0 = 1;
+            while (ECHO && TF0 == 0) {} // 等待结束探测
+            if (TF0 == 1) {
+                return TF0 = TR0 = 0;
+            }
+            TF0 = TR0 = 0;
+            return ((((u16)TH0 << 8) | TL0) >> 1) * 0.017; // cm
+        }
+    }
+    return 0;
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+## DS18B20
+```cpp
+// __config__.h
+#define DS18B20_DQ P1 ^ 7
+```
+
+```cpp
+// ds18b20.c
+#include "__config__.h"
+
+sbit DQ = DS18B20_DQ;
+```
+```cpp
+static void reset() {
+    DQ = 1; // 复位DQ
+    DQ = 0;
+    delay_5us(120); // 拉低 480~960us
+    DQ = 1;
+}
+```
+```cpp
+/**
+ * @return: 1-存在; 0-不存在;
+*/
+static bit check() {
+    bit x;
+    reset();
+    delay_5us(24); // 等待 15~60us 240us之内
+    x  = !DQ;      // 总线60~240us低电平
+    DQ = 1;        // 释放总线
+    delay_5us(48); // 保证时序完整 480us * 2
+    return x;
+}
+```
+```cpp
+static u8 read_byte() {
+    u8 i, byte = 0; // 存储读数据初始化 0
+    for(i = 8; i; --i) {
+        // 串行读8位数据，先读低位后读高位
+        DQ = 0; // 拉低
+        delay_5us(1);
+        DQ = 1; // 15μs内拉高释放总线
+        byte >>= 1;
+        if (DQ) {
+            byte |= 0x80;
+        }
+        delay_5us(9); // 每个读时段 最少60us
+    }
+    return byte;
+}
+```
+```cpp
+static void write_byte(u8 byte) {
+    u8 i;
+    for (i = 8; i; --i) {
+        // 串行写8位数据，先写低位后写高位
+        DQ = 0;           // 拉低
+        delay_5us(1);     // 至少间隔1us 低于15us
+        DQ = byte & 0x01; // 写 '1' 在15μs内拉高
+        delay_5us(9);     // 写 '0' 拉低60μs 10+50
+        DQ = 1;
+        byte >>= 1;
+    }
+}
+```
+```cpp
+#define SKIP_ROM     0xcc // 跳过匹配 ROM
+
+#define CONVERT_T         0x44 // 开始温度转换
+#define WRITE_SCRATCHPAD  0x4e // 写暂存器 (温度上下限和精度)
+#define READ_SCRATCHPAD   0xbe // 读暂存器 (温度值) (温度上下限和精度)
+#define COPY_SCRATCHPAD   0x48 // 存入 EEPROM (温度上下限和精度)
+```
+```cpp
+// 温度转换
+void ds18b20_convert() {
+    if (!check()) {
+        return;
+    }
+    write_byte(SKIP_ROM);  // 0xcc
+    write_byte(CONVERT_T); // 0x44
+}
+```
+```cpp
+// 温度读取
+float ds18b20_read_temp() {
+    s16 n;
+    if (!check()) {
+        return 7777;
+    }
+    write_byte(SKIP_ROM); // 0xcc
+    write_byte(READ_SCRATCHPAD); // 0xbe
+    n = read_byte();
+    n |= ((s16)read_byte()) << 8;
+    reset(); // 结束复位
+    return n * 0.0625;
+}
+```
+```cpp
+/**
+ * @param upper_limit: 温度上限
+ * @param lower_limit: 温度下限
+ * @param accuracy: 精度(分辨率)
+*/
+void ds18b20_get(u8* upper_limit, u8* lower_limit, u8* accuracy) {
+    u8 tmp;
+    if (!check()) {
+        return;
+    }
+
+    write_byte(SKIP_ROM);        // 0xcc
+    write_byte(READ_SCRATCHPAD); // 0xbe
+    read_byte();
+    read_byte();
+
+    tmp = read_byte();
+    if (upper_limit) {
+        *upper_limit = tmp;
+    }
+    tmp = read_byte();
+    if (lower_limit) {
+        *lower_limit = tmp;
+    }
+    tmp = read_byte();
+    if (accuracy) {
+        *accuracy = tmp >> 5;
+    }
+    reset(); // 结束复位
+}
+```
+```cpp
+/**
+ * @brief: 只是设置到 RAM, 存储需要通过 save, 写入 EEPROM
+ * @param upperLimit: 温度上限
+ * @param lowerLimit: 温度下限
+ * @param resolution: 分辨率(精度)
+ *                      00:  9位, 93.75 ms
+ *                      01: 10位, 187.5 ms
+ *                      10: 11位,   375 ms
+ *                      11: 12位,   750 ms
+*/
+void ds18b20_set(u8 upperLimit, u8 lowerLimit, u8 resolution) {
+    if (!check()) {
+        return;
+    }
+    write_byte(SKIP_ROM);         // 0xcc
+    write_byte(WRITE_SCRATCHPAD); // 04e
+    write_byte(upperLimit);       // 写高速缓存器TH高温限值
+    write_byte(lowerLimit);       // 写高速缓存器TL低温限值
+    write_byte(((resolution & 0x03) << 5) | 0x1f); // 精度设置
+}
+```
+```cpp
+void ds18b20_save(void)
+{
+    if (check()) {
+        return;
+    }
+    write_byte(SKIP_ROM); // 0xcc
+    write_byte(COPY_SCRATCHPAD); // 0x48
+    delay_5us(24); // 需要给DS18B20存储的时间
+    // 经测试 最好高于80us 否则可能会造成存入失败或者数据错误
+}
+```
+
+<div style="page-break-after: always;"></div>
+
+# 示例程序

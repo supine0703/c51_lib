@@ -53,7 +53,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```cpp
 // __config__.h
 #define KEY_4X4_PIN P7
-#define KEY_4X4_DELAY Delay1ms(5)
+#define KEY_4X4_DELAY delay_1ms(5)
 ```
 
 ```cpp
